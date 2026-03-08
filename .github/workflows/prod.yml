@@ -1,0 +1,50 @@
+name: Deploy Frontend Prod
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code (local, just for logging/build metadata)
+        uses: actions/checkout@v4
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}          
+          script: |
+            set -e            
+            cd ~/aygit/muhasebe/pre-registiration-web 
+
+
+            git reset --hard HEAD
+            git clean -fd
+
+            echo "Pulling latest code..."
+            git pull origin main
+
+            echo "Installing dependencies..."            
+            npm install --legacy-peer-deps
+
+            echo "Building React app..."            
+            npm run build
+
+            echo "Deploying build to Nginx directory..."
+            APP_DIR="/var/www/kayit.aygityazilim.com"  # Nginx'in root'u
+            sudo mkdir -p "$APP_DIR"
+            
+            sudo rm -rf "$APP_DIR"/*
+            
+            sudo cp -r build/* "$APP_DIR"/
+
+            echo "Reloading Nginx..."
+            sudo systemctl reload nginx
+
+            echo "Deployment finished."
