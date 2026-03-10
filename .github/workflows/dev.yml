@@ -32,16 +32,16 @@ jobs:
             echo "Installing dependencies..."            
             npm install --legacy-peer-deps
 
-            echo "Building React app..."            
+            echo "Building Vite app..."
             npm run build
 
-            echo "Deploying build to Nginx directory..."
+            echo "Deploying dist to Nginx directory..."
             APP_DIR="/var/www/kayit-dev.aygityazilim.com"  # Nginx'in root'u
             sudo mkdir -p "$APP_DIR"
-            
+
             sudo rm -rf "$APP_DIR"/*
-            
-            sudo cp -r build/* "$APP_DIR"/
+
+            sudo cp -r dist/* "$APP_DIR"/
 
             echo "Reloading Nginx..."
             sudo systemctl reload nginx
