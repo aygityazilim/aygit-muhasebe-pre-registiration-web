@@ -49,7 +49,9 @@ const TrackingPage: React.FC = () => {
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const [acceptedAgreements, setAcceptedAgreements] = useState<Record<number, boolean>>({})
+  const acceptedAgreements = Object.fromEntries(
+    (application?.contracts ?? []).map(c => [c.id, !!c.verified_code])
+  )
   const [pdfModal, setPdfModal] = useState<{ open: boolean; title: string; url: string; contractId: number } | null>(null)
   const [verifyModal, setVerifyModal] = useState<{ contractId: number; phone: string } | null>(null)
   const [verifyLoading, setVerifyLoading] = useState(false)
@@ -112,6 +114,7 @@ const TrackingPage: React.FC = () => {
       setUploadSuccess(true)
       setTaxPlateFile(null)
       setOtherFiles([])
+      await fetchStatus()
     } catch {
       setUploadError('Belgeler yüklenirken hata oluştu.')
     } finally {
@@ -125,9 +128,9 @@ const TrackingPage: React.FC = () => {
 
   const handleRequestVerification = async (contractId: number) => {
     try {
-      const res = await PreRegistrationAPI.sendVerificationCode(contractId)
+      await PreRegistrationAPI.sendVerificationCode(trackingNumber!, contractId)
       setVerifyError(null)
-      setVerifyModal({ contractId, phone: res.data.data.phone })
+      setVerifyModal({ contractId, phone: application!.phone })
     } catch {
       setVerifyError('Doğrulama kodu gönderilemedi. Lütfen tekrar deneyin.')
     }
@@ -138,13 +141,12 @@ const TrackingPage: React.FC = () => {
     setVerifyLoading(true)
     setVerifyError(null)
     try {
-      await PreRegistrationAPI.verifyContractCode(verifyModal.contractId, code)
-      setAcceptedAgreements(prev => ({ ...prev, [verifyModal.contractId]: true }))
+      await PreRegistrationAPI.verifyContractCode(trackingNumber!, verifyModal.contractId, code)
       setVerifyModal(null)
+      await fetchStatus()
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } }
       setVerifyError(axiosError?.response?.data?.error || 'Doğrulama kodu hatalı.')
-      setVerifyLoading(false)
     } finally {
       setVerifyLoading(false)
     }
@@ -381,10 +383,11 @@ const TrackingPage: React.FC = () => {
                 return (
                   <button
                     key={contract.id}
-                    onClick={() => handleAgreementClick(contract.id, meta.label, contract.link)}
+                    onClick={() => !accepted && handleAgreementClick(contract.id, meta.label, contract.link)}
+                    disabled={accepted}
                     className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border-2 transition-all text-left ${
                       accepted
-                        ? 'border-brand-primary bg-status-success-bg'
+                        ? 'border-brand-primary bg-status-success-bg cursor-default'
                         : 'border-border bg-surface-secondary hover:border-border-secondary hover:bg-white'
                     }`}
                   >
@@ -403,11 +406,13 @@ const TrackingPage: React.FC = () => {
                       </p>
                       <p className="text-xs text-content-tertiary mt-0.5">{meta.desc}</p>
                     </div>
-                    <div className="flex-shrink-0">
-                      <svg className="w-4 h-4 text-content-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                      </svg>
-                    </div>
+                    {!accepted && (
+                      <div className="flex-shrink-0">
+                        <svg className="w-4 h-4 text-content-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                        </svg>
+                      </div>
+                    )}
                   </button>
                 )
               })}
