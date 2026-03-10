@@ -2,12 +2,16 @@ import React, { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAppDispatch, useAppSelector } from '../state/hooks'
 import { clearTrackingNumber, setApplication } from '../state/applicationSlice'
-import type { RegistrationStatus } from '../state/applicationSlice'
+import type { RegistrationStatus, ContractVerificationType } from '../state/applicationSlice'
 import { PreRegistrationAPI } from '../api/preRegistration'
 import AygitLogo from '../components/AygitLogo'
 import PdfModal from '../components/PdfModal'
+import VerificationCodeModal from '../components/VerificationCodeModal'
 
-const PLACEHOLDER_PDF = 'https://www.w3.org/WAI/WCAG21/Techniques/pdf/PDF1'
+const CONTRACT_LABELS: Record<ContractVerificationType, { label: string; desc: string }> = {
+  kvkk: { label: 'KVKK Aydınlatma Metni', desc: 'Kişisel verilerinizin işlenmesine ilişkin aydınlatma metnini okudum.' },
+  etk: { label: 'ETK Onay Metni', desc: 'Elektronik ticari ileti gönderilmesine ilişkin onay metnini okudum ve kabul ediyorum.' },
+}
 
 const STATUS_CONFIG: Record<RegistrationStatus, { label: string; bg: string; text: string; dot: string }> = {
   pending: {
@@ -30,11 +34,6 @@ const STATUS_CONFIG: Record<RegistrationStatus, { label: string; bg: string; tex
   },
 }
 
-const AGREEMENTS = [
-  { id: 'gizlilik', label: 'Gizlilik Sözleşmesi', desc: 'Kişisel verilerinizin işlenmesine ilişkin aydınlatma metnini okudum.' },
-  { id: 'kullanim', label: 'Kullanım Koşulları', desc: 'Hizmet kullanım koşullarını okudum ve kabul ediyorum.' },
-  { id: 'aydinlatma', label: 'Hizmet Sözleşmesi', desc: 'Muhasebe hizmet sözleşmesini okudum ve kabul ediyorum.' },
-]
 
 const TrackingPage: React.FC = () => {
   const dispatch = useAppDispatch()
@@ -50,8 +49,11 @@ const TrackingPage: React.FC = () => {
   const [uploadSuccess, setUploadSuccess] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
 
-  const [acceptedAgreements, setAcceptedAgreements] = useState<Record<string, boolean>>({})
-  const [pdfModal, setPdfModal] = useState<{ open: boolean; title: string } | null>(null)
+  const [acceptedAgreements, setAcceptedAgreements] = useState<Record<number, boolean>>({})
+  const [pdfModal, setPdfModal] = useState<{ open: boolean; title: string; url: string; contractId: number } | null>(null)
+  const [verifyModal, setVerifyModal] = useState<{ contractId: number; phone: string } | null>(null)
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [verifyError, setVerifyError] = useState<string | null>(null)
 
   const taxPlateRef = useRef<HTMLInputElement>(null)
   const otherFilesRef = useRef<HTMLInputElement>(null)
@@ -117,12 +119,35 @@ const TrackingPage: React.FC = () => {
     }
   }
 
-  const handleAgreementClick = (_id: string, title: string) => {
-    setPdfModal({ open: true, title })
+  const handleAgreementClick = (contractId: number, title: string, url: string) => {
+    setPdfModal({ open: true, title, url, contractId })
   }
 
-  const handleAgreementAccept = (id: string) => {
-    setAcceptedAgreements(prev => ({ ...prev, [id]: true }))
+  const handleRequestVerification = async (contractId: number) => {
+    try {
+      const res = await PreRegistrationAPI.sendVerificationCode(contractId)
+      setVerifyError(null)
+      setVerifyModal({ contractId, phone: res.data.data.phone })
+    } catch {
+      setVerifyError('Doğrulama kodu gönderilemedi. Lütfen tekrar deneyin.')
+    }
+  }
+
+  const handleVerifyCode = async (code: string) => {
+    if (!verifyModal) return
+    setVerifyLoading(true)
+    setVerifyError(null)
+    try {
+      await PreRegistrationAPI.verifyContractCode(verifyModal.contractId, code)
+      setAcceptedAgreements(prev => ({ ...prev, [verifyModal.contractId]: true }))
+      setVerifyModal(null)
+    } catch (err: unknown) {
+      const axiosError = err as { response?: { data?: { error?: string } } }
+      setVerifyError(axiosError?.response?.data?.error || 'Doğrulama kodu hatalı.')
+      setVerifyLoading(false)
+    } finally {
+      setVerifyLoading(false)
+    }
   }
 
   const statusCfg = application ? STATUS_CONFIG[application.status] : null
@@ -344,58 +369,60 @@ const TrackingPage: React.FC = () => {
         </div>
 
         {/* Agreements */}
-        <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-border p-6">
-          <h2 className="text-lg font-semibold text-content-primary mb-1">Sözleşmeler</h2>
-          <p className="text-sm text-content-secondary mb-5">Aşağıdaki sözleşmeleri okuyup onaylayınız.</p>
+        {application && application.contracts.length > 0 && (
+          <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-border p-6">
+            <h2 className="text-lg font-semibold text-content-primary mb-1">Sözleşmeler</h2>
+            <p className="text-sm text-content-secondary mb-5">Aşağıdaki sözleşmeleri okuyup onaylayınız.</p>
 
-          <div className="space-y-3">
-            {AGREEMENTS.map(agreement => {
-              const accepted = !!acceptedAgreements[agreement.id]
-              return (
-                <button
-                  key={agreement.id}
-                  onClick={() => handleAgreementClick(agreement.id, agreement.label)}
-                  className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border-2 transition-all text-left ${
-                    accepted
-                      ? 'border-brand-primary bg-status-success-bg'
-                      : 'border-border bg-surface-secondary hover:border-border-secondary hover:bg-white'
-                  }`}
-                >
-                  {/* Checkmark */}
-                  <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                    accepted ? 'border-brand-primary bg-brand-primary' : 'border-border-secondary bg-white'
-                  }`}>
-                    {accepted && (
-                      <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            <div className="space-y-3">
+              {application.contracts.map(contract => {
+                const accepted = !!acceptedAgreements[contract.id]
+                const meta = CONTRACT_LABELS[contract.type] ?? { label: contract.type.toUpperCase(), desc: '' }
+                return (
+                  <button
+                    key={contract.id}
+                    onClick={() => handleAgreementClick(contract.id, meta.label, contract.link)}
+                    className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border-2 transition-all text-left ${
+                      accepted
+                        ? 'border-brand-primary bg-status-success-bg'
+                        : 'border-border bg-surface-secondary hover:border-border-secondary hover:bg-white'
+                    }`}
+                  >
+                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
+                      accepted ? 'border-brand-primary bg-brand-primary' : 'border-border-secondary bg-white'
+                    }`}>
+                      {accepted && (
+                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                        </svg>
+                      )}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`text-sm font-semibold ${accepted ? 'text-brand-secondary' : 'text-content-primary'}`}>
+                        {meta.label}
+                      </p>
+                      <p className="text-xs text-content-tertiary mt-0.5">{meta.desc}</p>
+                    </div>
+                    <div className="flex-shrink-0">
+                      <svg className="w-4 h-4 text-content-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                       </svg>
-                    )}
-                  </div>
-                  <div className="flex-1">
-                    <p className={`text-sm font-semibold ${accepted ? 'text-brand-secondary' : 'text-content-primary'}`}>
-                      {agreement.label}
-                    </p>
-                    <p className="text-xs text-content-tertiary mt-0.5">{agreement.desc}</p>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <svg className="w-4 h-4 text-content-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    </svg>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-
-          {Object.keys(acceptedAgreements).length === AGREEMENTS.length && (
-            <div className="mt-4 bg-status-success-bg border border-status-success/30 text-status-success rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Tüm sözleşmeler onaylandı.
+                    </div>
+                  </button>
+                )
+              })}
             </div>
-          )}
-        </div>
+
+            {application.contracts.every(c => acceptedAgreements[c.id]) && (
+              <div className="mt-4 bg-status-success-bg border border-status-success/30 text-status-success rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Tüm sözleşmeler onaylandı.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -408,12 +435,22 @@ const TrackingPage: React.FC = () => {
         <PdfModal
           isOpen={pdfModal.open}
           title={pdfModal.title}
-          pdfUrl={PLACEHOLDER_PDF}
-          onAccept={() => {
-            const id = AGREEMENTS.find(a => a.label === pdfModal.title)?.id
-            if (id) handleAgreementAccept(id)
-          }}
+          pdfUrl={pdfModal.url}
+          onRequestVerification={() => handleRequestVerification(pdfModal.contractId)}
           onClose={() => setPdfModal(null)}
+        />
+      )}
+
+      {/* Verification Code Modal */}
+      {verifyModal && (
+        <VerificationCodeModal
+          isOpen={true}
+          phone={verifyModal.phone}
+          loading={verifyLoading}
+          error={verifyError}
+          onVerify={handleVerifyCode}
+          onResend={() => handleRequestVerification(verifyModal.contractId)}
+          onClose={() => { setVerifyModal(null); setVerifyError(null) }}
         />
       )}
     </div>

@@ -2,6 +2,18 @@ import { createSlice } from '@reduxjs/toolkit'
 import type { PayloadAction } from '@reduxjs/toolkit'
 
 export type RegistrationStatus = 'pending' | 'quoted' | 'done'
+export type ContractVerificationType = 'kvkk' | 'etk'
+
+export interface ContractVerification {
+  id: number
+  link: string
+  type: ContractVerificationType
+  verified_code: string | null
+  verification_code: string | null
+  verification_date: string | null
+  sent_date: string | null
+  created_at: string
+}
 
 export interface ApplicationData {
   id: number
@@ -13,6 +25,7 @@ export interface ApplicationData {
   status: RegistrationStatus
   nes_info: Record<string, unknown> | null
   created_at: string
+  contracts: ContractVerification[]
 }
 
 interface ApplicationState {

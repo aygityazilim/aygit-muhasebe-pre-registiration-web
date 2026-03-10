@@ -28,4 +28,10 @@ export const PreRegistrationAPI = {
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ),
+
+  sendVerificationCode: (contractId: number) =>
+    client.post<ApiResponse<{ phone: string }>>(`/contracts/${contractId}/send-code`),
+
+  verifyContractCode: (contractId: number, code: string) =>
+    client.post<ApiResponse<{ verified: boolean }>>(`/contracts/${contractId}/verify`, { code }),
 }

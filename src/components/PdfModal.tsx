@@ -4,11 +4,11 @@ interface PdfModalProps {
   isOpen: boolean
   title: string
   pdfUrl: string
-  onAccept: () => void
+  onRequestVerification: () => void
   onClose: () => void
 }
 
-const PdfModal: React.FC<PdfModalProps> = ({ isOpen, title, pdfUrl, onAccept, onClose }) => {
+const PdfModal: React.FC<PdfModalProps> = ({ isOpen, title, pdfUrl, onRequestVerification, onClose }) => {
   if (!isOpen) return null
 
   return (
@@ -41,7 +41,7 @@ const PdfModal: React.FC<PdfModalProps> = ({ isOpen, title, pdfUrl, onAccept, on
         <div className="px-6 py-4 border-t border-border flex justify-end">
           <button
             onClick={() => {
-              onAccept()
+              onRequestVerification()
               onClose()
             }}
             className="bg-brand-primary hover:bg-brand-secondary text-white font-semibold px-6 py-2.5 rounded-xl transition-colors"
