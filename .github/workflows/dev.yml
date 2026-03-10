@@ -21,7 +21,7 @@ jobs:
           key: ${{ secrets.SSH_PRIVATE_KEY }}          
           script: |
             set -e            
-            cd ~/aygit/muhasebe/pre-registiration-web-dev  # <-- kendi frontend repo path'in
+            cd ~/aygit/muhasebe/registiration-web-dev  # <-- kendi frontend repo path'in
 
             git reset --hard HEAD
             git clean -fd
