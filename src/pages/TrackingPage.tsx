@@ -247,14 +247,74 @@ const TrackingPage: React.FC = () => {
           <h2 className="text-lg font-semibold text-content-primary mb-1">Belge Yükleme</h2>
           <p className="text-sm text-content-secondary mb-5">Vergi levhanızı ve gerekli diğer belgelerinizi yükleyin.</p>
 
+          {/* Already uploaded documents */}
+          {application?.document && (
+            <div className="mb-6 space-y-2">
+              <p className="text-xs font-semibold text-content-tertiary uppercase tracking-wide mb-3">Yüklenen Belgeler</p>
+              {application.document.tax_plate && (
+                <a
+                  href={`${import.meta.env.VITE_API_BASE_URL}/documents/uploads/${application.document.tax_plate}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 bg-status-success-bg border border-status-success/20 rounded-xl px-4 py-3 hover:border-status-success/50 transition-colors cursor-pointer"
+                >
+                  <div className="w-8 h-8 bg-status-success/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-status-success" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-content-primary">Vergi Levhası</p>
+                    <p className="text-xs text-content-tertiary truncate">{application.document.tax_plate.split('/').pop()}</p>
+                  </div>
+                  <svg className="w-4 h-4 text-content-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              )}
+              {application.document.other && application.document.other.length > 0 && application.document.other.map((path, i) => (
+                <a
+                  key={i}
+                  href={`${import.meta.env.VITE_API_BASE_URL}/documents/uploads/${path}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 bg-status-info-bg border border-status-info/20 rounded-xl px-4 py-3 hover:border-status-info/50 transition-colors cursor-pointer"
+                >
+                  <div className="w-8 h-8 bg-status-info/10 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <svg className="w-4 h-4 text-status-info" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-content-primary">Diğer Belge {i + 1}</p>
+                    <p className="text-xs text-content-tertiary truncate">{path.split('/').pop()}</p>
+                  </div>
+                  <svg className="w-4 h-4 text-content-tertiary flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                  </svg>
+                </a>
+              ))}
+              <div className="border-t border-border mt-4 pt-4">
+                <p className="text-xs text-content-tertiary mb-3">Ek belge yüklemek için aşağıyı kullanın</p>
+              </div>
+            </div>
+          )}
+
           {/* Tax Plate */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-content-secondary mb-2">
-              Vergi Levhası <span className="text-xs text-content-tertiary">(tek dosya)</span>
+              Vergi Levhası{' '}
+              <span className="text-xs text-content-tertiary">
+                {application?.document?.tax_plate ? '(mevcut dosyanın üzerine yazılır)' : '(tek dosya)'}
+              </span>
             </label>
             <div
               onClick={() => taxPlateRef.current?.click()}
-              className="border-2 border-dashed border-border hover:border-brand-primary rounded-xl px-4 py-4 cursor-pointer transition-colors group"
+              className={`border-2 border-dashed rounded-xl px-4 py-4 cursor-pointer transition-colors group ${
+                application?.document?.tax_plate && !taxPlateFile
+                  ? 'border-status-warning/40 bg-status-warning-bg hover:border-status-warning'
+                  : 'border-border hover:border-brand-primary'
+              }`}
             >
               {taxPlateFile ? (
                 <div className="flex items-center gap-3">
@@ -275,6 +335,14 @@ const TrackingPage: React.FC = () => {
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                     </svg>
                   </button>
+                </div>
+              ) : application?.document?.tax_plate ? (
+                <div className="flex flex-col items-center gap-1 text-status-warning group-hover:text-status-warning transition-colors py-2">
+                  <svg className="w-8 h-8 mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  <p className="text-sm font-medium">Vergi levhasını değiştir</p>
+                  <p className="text-xs text-content-tertiary">{application.document.tax_plate.split('/').pop()}</p>
                 </div>
               ) : (
                 <div className="flex flex-col items-center gap-1 text-content-tertiary group-hover:text-brand-primary transition-colors py-2">

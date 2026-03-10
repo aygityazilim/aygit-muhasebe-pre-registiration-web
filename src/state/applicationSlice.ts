@@ -15,6 +15,13 @@ export interface ContractVerification {
   created_at: string
 }
 
+export interface Document {
+  id: number
+  tax_plate: string | null
+  other: string[] | null
+  created_at: string
+}
+
 export interface ApplicationData {
   id: number
   phone: string
@@ -26,6 +33,7 @@ export interface ApplicationData {
   nes_info: Record<string, unknown> | null
   created_at: string
   contracts: ContractVerification[]
+  document: Document | null
 }
 
 interface ApplicationState {

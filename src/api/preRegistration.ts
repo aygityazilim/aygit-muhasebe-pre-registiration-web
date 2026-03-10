@@ -23,8 +23,8 @@ export const PreRegistrationAPI = {
     client.get<ApiResponse<ApplicationData>>(`/${trackingNumber}`),
 
   uploadDocuments: (trackingNumber: string, formData: FormData) =>
-    client.post<ApiResponse<{ tax_plate: string | null; other: string[] }>>(
-      `/${trackingNumber}/documents`,
+    client.post<ApiResponse<{ tax_plate: string | null; other: string[] | null }>>(
+      `/documents/${trackingNumber}`,
       formData,
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ),
