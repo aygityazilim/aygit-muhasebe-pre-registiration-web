@@ -123,7 +123,13 @@ const TrackingPage: React.FC = () => {
   }
 
   const handleAgreementClick = (contractId: number, title: string, url: string) => {
-    setPdfModal({ open: true, title, url, contractId })
+    const contract = application?.contracts.find(c => c.id === contractId)
+    if (contract?.sent_date) {
+      setVerifyError(null)
+      setVerifyModal({ contractId, phone: application!.phone })
+    } else {
+      setPdfModal({ open: true, title, url, contractId })
+    }
   }
 
   const handleRequestVerification = async (contractId: number) => {
