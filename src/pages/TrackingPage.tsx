@@ -5,8 +5,7 @@ import { clearTrackingNumber, setApplication } from '../state/applicationSlice'
 import type { RegistrationStatus, ContractVerificationType } from '../state/applicationSlice'
 import { PreRegistrationAPI } from '../api/preRegistration'
 import AygitLogo from '../components/AygitLogo'
-import PdfModal from '../components/PdfModal'
-import VerificationCodeModal from '../components/VerificationCodeModal'
+import VerificationCodeModal, { type ContractCodeEntry } from '../components/VerificationCodeModal'
 
 const CONTRACT_LABELS: Record<ContractVerificationType, { label: string; desc: string }> = {
   kvkk: { label: 'KVKK Aydınlatma Metni', desc: 'Kişisel verilerinizin işlenmesine ilişkin aydınlatma metnini okudum.' },
@@ -52,10 +51,10 @@ const TrackingPage: React.FC = () => {
   const acceptedAgreements = Object.fromEntries(
     (application?.contracts ?? []).map(c => [c.id, !!c.verified_code])
   )
-  const [pdfModal, setPdfModal] = useState<{ open: boolean; title: string; url: string; contractId: number } | null>(null)
   const [verifyModal, setVerifyModal] = useState<{ contractId: number; phone: string } | null>(null)
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [verifyError, setVerifyError] = useState<string | null>(null)
+  const [checkedContracts, setCheckedContracts] = useState<Set<number>>(new Set())
 
   const taxPlateRef = useRef<HTMLInputElement>(null)
   const otherFilesRef = useRef<HTMLInputElement>(null)
@@ -122,33 +121,36 @@ const TrackingPage: React.FC = () => {
     }
   }
 
-  const handleAgreementClick = (contractId: number, title: string, url: string) => {
-    const contract = application?.contracts.find(c => c.id === contractId)
-    if (contract?.sent_date) {
-      setVerifyError(null)
-      setVerifyModal({ contractId, phone: application!.phone })
-    } else {
-      setPdfModal({ open: true, title, url, contractId })
-    }
-  }
+  const [pendingContracts, setPendingContracts] = useState<ContractCodeEntry[]>([])
 
-  const handleRequestVerification = async (contractId: number) => {
+  const handleRequestAllVerification = async (contractIds: number[]) => {
     try {
-      await PreRegistrationAPI.sendVerificationCode(trackingNumber!, contractId)
+      for (const contractId of contractIds) {
+        await PreRegistrationAPI.sendVerificationCode(trackingNumber!, contractId)
+      }
+      const entries: ContractCodeEntry[] = contractIds.map(id => {
+        const contract = application!.contracts.find(c => c.id === id)
+        const meta = CONTRACT_LABELS[contract!.type] ?? { label: contract!.type.toUpperCase(), desc: '' }
+        return { contractId: id, label: meta.label }
+      })
+      setPendingContracts(entries)
       setVerifyError(null)
-      setVerifyModal({ contractId, phone: application!.phone })
+      setVerifyModal({ contractId: contractIds[0], phone: application!.phone })
     } catch {
       setVerifyError('Doğrulama kodu gönderilemedi. Lütfen tekrar deneyin.')
     }
   }
 
-  const handleVerifyCode = async (code: string) => {
-    if (!verifyModal) return
+  const handleVerifyCode = async (codes: { contractId: number; code: string }[]) => {
+    if (!verifyModal || pendingContracts.length === 0) return
     setVerifyLoading(true)
     setVerifyError(null)
     try {
-      await PreRegistrationAPI.verifyContractCode(trackingNumber!, verifyModal.contractId, code)
+      for (const { contractId, code } of codes) {
+        await PreRegistrationAPI.verifyContractCode(trackingNumber!, contractId, code)
+      }
       setVerifyModal(null)
+      setPendingContracts([])
       await fetchStatus()
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } }
@@ -445,54 +447,84 @@ const TrackingPage: React.FC = () => {
         </div>
 
         {/* Agreements */}
-        {application && application.contracts.length > 0 && (
+        {application && application.contracts.length > 0 && (() => {
+          const allAccepted = application.contracts.every(c => acceptedAgreements[c.id])
+          const unverifiedContracts = application.contracts.filter(c => !acceptedAgreements[c.id])
+          return (
           <div className="w-full max-w-2xl bg-white rounded-2xl shadow-sm border border-border p-6">
             <h2 className="text-lg font-semibold text-content-primary mb-1">Sözleşmeler</h2>
             <p className="text-sm text-content-secondary mb-5">Aşağıdaki sözleşmeleri okuyup onaylayınız.</p>
 
-            <div className="space-y-3">
+            <div className="space-y-4">
               {application.contracts.map(contract => {
                 const accepted = !!acceptedAgreements[contract.id]
                 const meta = CONTRACT_LABELS[contract.type] ?? { label: contract.type.toUpperCase(), desc: '' }
                 return (
-                  <button
-                    key={contract.id}
-                    onClick={() => !accepted && handleAgreementClick(contract.id, meta.label, contract.link)}
-                    disabled={accepted}
-                    className={`w-full flex items-center gap-4 px-4 py-4 rounded-xl border-2 transition-all text-left ${
-                      accepted
-                        ? 'border-brand-primary bg-status-success-bg cursor-default'
-                        : 'border-border bg-surface-secondary hover:border-border-secondary hover:bg-white'
-                    }`}
-                  >
-                    <div className={`w-6 h-6 rounded-full border-2 flex items-center justify-center flex-shrink-0 transition-colors ${
-                      accepted ? 'border-brand-primary bg-brand-primary' : 'border-border-secondary bg-white'
-                    }`}>
-                      {accepted && (
-                        <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                        </svg>
-                      )}
-                    </div>
-                    <div className="flex-1">
-                      <p className={`text-sm font-semibold ${accepted ? 'text-brand-secondary' : 'text-content-primary'}`}>
+                  <div key={contract.id} className="flex items-start gap-3">
+                    {/* Checkbox */}
+                    <button
+                      onClick={() => {
+                        if (!accepted) {
+                          setCheckedContracts(prev => {
+                            const next = new Set(prev)
+                            if (next.has(contract.id)) next.delete(contract.id)
+                            else next.add(contract.id)
+                            return next
+                          })
+                        }
+                      }}
+                      disabled={accepted}
+                      className="mt-0.5 flex-shrink-0"
+                    >
+                      <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
+                        accepted || checkedContracts.has(contract.id)
+                          ? 'border-brand-primary bg-brand-primary'
+                          : 'border-border-secondary bg-white hover:border-brand-primary cursor-pointer'
+                      }`}>
+                        {(accepted || checkedContracts.has(contract.id)) && (
+                          <svg className="w-3.5 h-3.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                          </svg>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Label + description */}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-sm font-medium ${accepted ? 'text-brand-secondary' : 'text-content-primary'}`}>
                         {meta.label}
                       </p>
                       <p className="text-xs text-content-tertiary mt-0.5">{meta.desc}</p>
                     </div>
-                    {!accepted && (
-                      <div className="flex-shrink-0">
-                        <svg className="w-4 h-4 text-content-tertiary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                        </svg>
-                      </div>
-                    )}
-                  </button>
+
+                    {/* PDF link */}
+                    <a
+                      href={contract.link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-shrink-0 inline-flex items-center gap-1.5 text-xs font-medium text-brand-primary hover:text-brand-secondary transition-colors mt-0.5"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                      </svg>
+                      PDF
+                    </a>
+                  </div>
                 )
               })}
             </div>
 
-            {application.contracts.every(c => acceptedAgreements[c.id]) && (
+            {!allAccepted && (
+              <button
+                onClick={() => handleRequestAllVerification(unverifiedContracts.map(c => c.id))}
+                disabled={!unverifiedContracts.every(c => checkedContracts.has(c.id))}
+                className="mt-5 w-full bg-brand-primary hover:bg-brand-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors"
+              >
+                Kabul Et
+              </button>
+            )}
+
+            {allAccepted && (
               <div className="mt-4 bg-status-success-bg border border-status-success/30 text-status-success rounded-xl px-4 py-2.5 text-sm flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -501,7 +533,9 @@ const TrackingPage: React.FC = () => {
               </div>
             )}
           </div>
-        )}
+          )
+        })()}
+        
       </div>
 
       {/* Footer */}
@@ -509,27 +543,17 @@ const TrackingPage: React.FC = () => {
         © {new Date().getFullYear()} Aygıt. Tüm hakları saklıdır.
       </div>
 
-      {/* PDF Modal */}
-      {pdfModal && (
-        <PdfModal
-          isOpen={pdfModal.open}
-          title={pdfModal.title}
-          pdfUrl={pdfModal.url}
-          onRequestVerification={() => handleRequestVerification(pdfModal.contractId)}
-          onClose={() => setPdfModal(null)}
-        />
-      )}
-
       {/* Verification Code Modal */}
       {verifyModal && (
         <VerificationCodeModal
           isOpen={true}
           phone={verifyModal.phone}
+          contracts={pendingContracts}
           loading={verifyLoading}
           error={verifyError}
           onVerify={handleVerifyCode}
-          onResend={() => handleRequestVerification(verifyModal.contractId)}
-          onClose={() => { setVerifyModal(null); setVerifyError(null) }}
+          onResend={() => handleRequestAllVerification(pendingContracts.map(c => c.contractId))}
+          onClose={() => { setVerifyModal(null); setVerifyError(null); setPendingContracts([]) }}
         />
       )}
     </div>

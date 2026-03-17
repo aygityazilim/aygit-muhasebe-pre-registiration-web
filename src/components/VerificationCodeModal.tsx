@@ -1,64 +1,82 @@
 import React, { useState, useRef, useEffect } from 'react'
 
+export interface ContractCodeEntry {
+  contractId: number
+  label: string
+}
+
 interface VerificationCodeModalProps {
   isOpen: boolean
   phone: string
+  contracts: ContractCodeEntry[]
   loading: boolean
   error: string | null
-  onVerify: (code: string) => void
+  onVerify: (codes: { contractId: number; code: string }[]) => void
   onResend: () => void
   onClose: () => void
 }
 
+const CODE_LENGTH = 6
+
 const VerificationCodeModal: React.FC<VerificationCodeModalProps> = ({
   isOpen,
   phone,
+  contracts,
   loading,
   error,
   onVerify,
   onResend,
   onClose,
 }) => {
-  const [digits, setDigits] = useState(['', '', '', '', '', ''])
-  const inputRefs = useRef<(HTMLInputElement | null)[]>([])
+  const [allDigits, setAllDigits] = useState<string[][]>([])
+  const inputRefs = useRef<(HTMLInputElement | null)[][]>([])
 
   useEffect(() => {
     if (isOpen) {
-      setDigits(['', '', '', '', '', ''])
-      setTimeout(() => inputRefs.current[0]?.focus(), 50)
+      setAllDigits(contracts.map(() => Array(CODE_LENGTH).fill('')))
+      inputRefs.current = contracts.map(() => Array(CODE_LENGTH).fill(null))
+      setTimeout(() => inputRefs.current[0]?.[0]?.focus(), 50)
     }
-  }, [isOpen])
+  }, [isOpen, contracts.length])
 
   if (!isOpen) return null
 
-  const handleChange = (index: number, value: string) => {
+  const handleChange = (contractIdx: number, digitIdx: number, value: string) => {
     if (!/^\d*$/.test(value)) return
-    const newDigits = [...digits]
-    newDigits[index] = value.slice(-1)
-    setDigits(newDigits)
-    if (value && index < 5) {
-      inputRefs.current[index + 1]?.focus()
-    }
-    if (newDigits.every(d => d !== '') && newDigits[index] !== '') {
-      onVerify(newDigits.join(''))
+    const updated = allDigits.map(d => [...d])
+    updated[contractIdx][digitIdx] = value.slice(-1)
+    setAllDigits(updated)
+    if (value && digitIdx < CODE_LENGTH - 1) {
+      inputRefs.current[contractIdx]?.[digitIdx + 1]?.focus()
     }
   }
 
-  const handleKeyDown = (index: number, e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      inputRefs.current[index - 1]?.focus()
+  const handleKeyDown = (contractIdx: number, digitIdx: number, e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Backspace' && !allDigits[contractIdx][digitIdx] && digitIdx > 0) {
+      inputRefs.current[contractIdx]?.[digitIdx - 1]?.focus()
     }
   }
 
-  const handlePaste = (e: React.ClipboardEvent) => {
-    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6)
-    if (pasted.length === 6) {
-      const newDigits = pasted.split('')
-      setDigits(newDigits)
-      inputRefs.current[5]?.focus()
-      onVerify(pasted)
+  const handlePaste = (contractIdx: number, e: React.ClipboardEvent) => {
+    const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, CODE_LENGTH)
+    if (pasted.length === CODE_LENGTH) {
+      const updated = allDigits.map(d => [...d])
+      updated[contractIdx] = pasted.split('')
+      setAllDigits(updated)
+      inputRefs.current[contractIdx]?.[CODE_LENGTH - 1]?.focus()
     }
     e.preventDefault()
+  }
+
+  const allFilled = allDigits.length === contracts.length && allDigits.every(d => d.every(c => c !== ''))
+
+  const handleSubmit = () => {
+    if (!allFilled) return
+    const codes = contracts.map((contract, idx) => ({
+      contractId: contract.contractId,
+      code: allDigits[idx].join(''),
+    }))
+    onVerify(codes)
   }
 
   const maskedPhone = phone.replace(/(\d{3})\d{4}(\d{4})/, '$1****$2')
@@ -68,7 +86,7 @@ const VerificationCodeModal: React.FC<VerificationCodeModalProps> = ({
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-border">
-          <h2 className="text-lg font-semibold text-content-primary">Kimlik Doğrulama</h2>
+          <h2 className="text-lg font-semibold text-content-primary">Sözleşme Onayı</h2>
           <button
             onClick={onClose}
             className="text-content-tertiary hover:text-content-secondary transition-colors p-1 rounded-lg hover:bg-surface-secondary"
@@ -88,30 +106,43 @@ const VerificationCodeModal: React.FC<VerificationCodeModalProps> = ({
           </div>
 
           <p className="text-sm text-content-secondary text-center mb-1">
-            Doğrulama kodunuz
+            Doğrulama kodlarınız
           </p>
           <p className="text-sm font-semibold text-content-primary text-center mb-6">
             {maskedPhone} numaralı telefona gönderildi.
           </p>
 
-          {/* Code inputs */}
-          <div className="flex gap-2 justify-center mb-4" onPaste={handlePaste}>
-            {digits.map((digit, i) => (
-              <input
-                key={i}
-                ref={el => { inputRefs.current[i] = el }}
-                type="text"
-                inputMode="numeric"
-                maxLength={1}
-                value={digit}
-                onChange={e => handleChange(i, e.target.value)}
-                onKeyDown={e => handleKeyDown(i, e)}
-                disabled={loading}
-                className={`w-11 h-12 text-center text-xl font-bold rounded-xl border-2 transition-colors focus:outline-none
-                  ${digit ? 'border-brand-primary bg-brand-primary/5 text-brand-primary' : 'border-border bg-surface-tertiary text-content-primary'}
-                  ${loading ? 'opacity-50 cursor-not-allowed' : 'focus:border-brand-primary'}
-                `}
-              />
+          {/* Code inputs per contract */}
+          <div className="space-y-5 mb-5">
+            {contracts.map((contract, contractIdx) => (
+              <div key={contract.contractId}>
+                <p className="text-xs font-semibold text-content-secondary mb-2">{contract.label}</p>
+                <div
+                  className="flex gap-2 justify-center"
+                  onPaste={(e) => handlePaste(contractIdx, e)}
+                >
+                  {(allDigits[contractIdx] || []).map((digit, digitIdx) => (
+                    <input
+                      key={digitIdx}
+                      ref={el => {
+                        if (!inputRefs.current[contractIdx]) inputRefs.current[contractIdx] = []
+                        inputRefs.current[contractIdx][digitIdx] = el
+                      }}
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={1}
+                      value={digit}
+                      onChange={e => handleChange(contractIdx, digitIdx, e.target.value)}
+                      onKeyDown={e => handleKeyDown(contractIdx, digitIdx, e)}
+                      disabled={loading}
+                      className={`w-10 h-11 text-center text-lg font-bold rounded-xl border-2 transition-colors focus:outline-none
+                        ${digit ? 'border-brand-primary bg-brand-primary/5 text-brand-primary' : 'border-border bg-surface-tertiary text-content-primary'}
+                        ${loading ? 'opacity-50 cursor-not-allowed' : 'focus:border-brand-primary'}
+                      `}
+                    />
+                  ))}
+                </div>
+              </div>
             ))}
           </div>
 
@@ -127,6 +158,14 @@ const VerificationCodeModal: React.FC<VerificationCodeModalProps> = ({
               Doğrulanıyor...
             </div>
           )}
+
+          <button
+            onClick={handleSubmit}
+            disabled={!allFilled || loading}
+            className="w-full bg-brand-primary hover:bg-brand-secondary disabled:opacity-50 disabled:cursor-not-allowed text-white font-semibold py-3 rounded-xl transition-colors mb-3"
+          >
+            {loading ? 'Doğrulanıyor...' : 'Onayla'}
+          </button>
 
           <button
             onClick={onResend}
