@@ -29,8 +29,8 @@ export const PreRegistrationAPI = {
       { headers: { 'Content-Type': 'multipart/form-data' } }
     ),
 
-  sendVerificationCode: (trackingNumber: string, contractId: number) =>
-    client.patch<ApiResponse<null>>(`/contract-verification/${trackingNumber}/send-code?contract=${contractId}`),
+  sendVerificationCode: (trackingNumber: string) =>
+    client.patch<ApiResponse<null>>(`/contract-verification/${trackingNumber}/send-code`),
 
   verifyContractCode: (trackingNumber: string, contractId: number, code: string) =>
     client.patch<ApiResponse<null>>(`/contract-verification/${trackingNumber}/verify-code?contract=${contractId}&code=${code}`),

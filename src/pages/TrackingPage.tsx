@@ -125,9 +125,7 @@ const TrackingPage: React.FC = () => {
 
   const handleRequestAllVerification = async (contractIds: number[]) => {
     try {
-      for (const contractId of contractIds) {
-        await PreRegistrationAPI.sendVerificationCode(trackingNumber!, contractId)
-      }
+      await PreRegistrationAPI.sendVerificationCode(trackingNumber!)
       const entries: ContractCodeEntry[] = contractIds.map(id => {
         const contract = application!.contracts.find(c => c.id === id)
         const meta = CONTRACT_LABELS[contract!.type] ?? { label: contract!.type.toUpperCase(), desc: '' }
@@ -141,6 +139,8 @@ const TrackingPage: React.FC = () => {
     }
   }
 
+  const [verifiedContractIds, setVerifiedContractIds] = useState<Set<number>>(new Set())
+
   const handleVerifyCode = async (codes: { contractId: number; code: string }[]) => {
     if (!verifyModal || pendingContracts.length === 0) return
     setVerifyLoading(true)
@@ -149,9 +149,17 @@ const TrackingPage: React.FC = () => {
       for (const { contractId, code } of codes) {
         await PreRegistrationAPI.verifyContractCode(trackingNumber!, contractId, code)
       }
-      setVerifyModal(null)
-      setPendingContracts([])
-      await fetchStatus()
+      const newVerified = new Set(verifiedContractIds)
+      codes.forEach(c => newVerified.add(c.contractId))
+      setVerifiedContractIds(newVerified)
+
+      const allVerified = pendingContracts.every(c => newVerified.has(c.contractId))
+      if (allVerified) {
+        setVerifyModal(null)
+        setPendingContracts([])
+        setVerifiedContractIds(new Set())
+        await fetchStatus()
+      }
     } catch (err: unknown) {
       const axiosError = err as { response?: { data?: { error?: string } } }
       setVerifyError(axiosError?.response?.data?.error || 'Doğrulama kodu hatalı.')
@@ -535,7 +543,7 @@ const TrackingPage: React.FC = () => {
           </div>
           )
         })()}
-        
+
       </div>
 
       {/* Footer */}
